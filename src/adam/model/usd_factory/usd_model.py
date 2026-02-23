@@ -240,8 +240,18 @@ class USDModelFactory(ModelFactory):
         names_seen: set[str] = set()
         robot_path = self.robot_prim.GetPath()
 
+        # Some USD files (e.g. those not produced by Newton) use a flat layout
+        # where the ArticulationRoot is applied to the root *link* prim itself,
+        # and all other link prims are siblings under the parent Xform rather
+        # than descendants.  In that case, broaden the search scope one level
+        # up so that sibling rigid bodies are collected as well.
+        if self.robot_prim.HasAPI(self.UsdPhysics.RigidBodyAPI):
+            search_path = robot_path.GetParentPath()
+        else:
+            search_path = robot_path
+
         for prim in self.stage.TraverseAll():
-            if not prim.GetPath().HasPrefix(robot_path):
+            if not prim.GetPath().HasPrefix(search_path):
                 continue
             if not prim.HasAPI(self.UsdPhysics.RigidBodyAPI):
                 continue
@@ -265,7 +275,7 @@ class USDModelFactory(ModelFactory):
 
         if not links:
             raise ValueError(
-                f"No rigid bodies found under robot root '{robot_path}' in USD stage."
+                f"No rigid bodies found under '{search_path}' in USD stage."
             )
 
         return links, path_to_link_name
@@ -281,7 +291,9 @@ class USDModelFactory(ModelFactory):
             f"Unsupported USD joint type '{prim.GetTypeName()}' at {prim.GetPath()}."
         )
 
-    def _joint_limits(self, joint_schema: Any, joint_type: str) -> Optional[Limits]:
+    def _joint_limits(
+        self, joint_schema: Any, joint_type: str
+    ) -> Optional[Limits]:
         if joint_type == "fixed":
             return None
 
@@ -300,6 +312,12 @@ class USDModelFactory(ModelFactory):
 
         lower = float(lower_attr.Get())
         upper = float(upper_attr.Get())
+
+        # USD stores revolute limits in degrees; ADAM uses radians internally.
+        if joint_type == "revolute":
+            lower = np.radians(lower)
+            upper = np.radians(upper)
+
         return Limits(lower=lower, upper=upper, effort=None, velocity=None)
 
     def _local_pose_to_origin(self, joint: Any) -> USDOrigin:
@@ -317,17 +335,31 @@ class USDModelFactory(ModelFactory):
         if rot1 is None:
             rot1 = self.Gf.Quatf(1.0, 0.0, 0.0, 0.0)
 
-        # Current implementation assumes the child-side local joint frame is identity.
-        # This is true for common robot exports and keeps a direct URDF-style mapping.
-        if not np.allclose(_vec3_to_np(pos1), np.zeros(3)) or not _is_identity_quat(
-            rot1
-        ):
-            raise ValueError(
-                "USD joint localPos1/localRot1 must be identity for this loader. "
-                f"Found non-identity at joint {joint.GetPath()}."
-            )
+        # Compose the parent-side and child-side local frames into a
+        # single URDF-style joint origin:  T_origin = T_parent * T_child^{-1}
+        # When localPos1/localRot1 is identity this reduces to the parent frame.
+        p0 = _vec3_to_np(pos0)
+        p1 = _vec3_to_np(pos1)
+        q0_xyzw = _quat_to_xyzw(rot0)
+        q1_xyzw = _quat_to_xyzw(rot1)
 
-        return USDOrigin(xyz=_vec3_to_np(pos0), rpy=_quat_to_rpy(rot0))
+        R0 = R.from_quat(q0_xyzw)
+        R1 = R.from_quat(q1_xyzw)
+
+        # Combined rotation: R0 * R1^{-1}
+        R_combined = R0 * R1.inv()
+        # Combined translation: p0 - R_combined * p1
+        p_combined = p0 - R_combined.apply(p1)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Gimbal lock detected.*",
+                category=UserWarning,
+            )
+            rpy_combined = R_combined.as_euler("xyz")
+
+        return USDOrigin(xyz=p_combined, rpy=rpy_combined)
 
     def _build_joint_from_prim(self, prim: Any) -> Optional[StdJoint]:
         joint = self.UsdPhysics.Joint(prim)
@@ -357,9 +389,23 @@ class USDModelFactory(ModelFactory):
         else:
             axis_attr = prim.GetAttribute("adam:axis")
             if axis_attr.IsValid() and axis_attr.HasAuthoredValueOpinion():
+                # ADAM-exported USD stores the exact axis in the body frame.
                 axis = _vec3_to_np(axis_attr.Get())
             else:
-                axis = self._axis_token_to_vector(joint_schema.GetAxisAttr().Get())
+                # The USD axis token is defined in the joint anchor frame.
+                # Transform it to the child body frame via R_localRot1,
+                # since ADAM (like URDF) expects the axis in the child frame.
+                # localRot1 encodes the rotation FROM the joint/anchor frame
+                # TO the child body frame.
+                axis_in_anchor = self._axis_token_to_vector(
+                    joint_schema.GetAxisAttr().Get()
+                )
+                rot1 = joint.GetLocalRot1Attr().Get()
+                if rot1 is not None and not _is_identity_quat(rot1):
+                    q1_xyzw = _quat_to_xyzw(rot1)
+                    axis = R.from_quat(q1_xyzw).apply(axis_in_anchor)
+                else:
+                    axis = axis_in_anchor
 
         usd_joint = USDJoint(
             name=prim.GetName(),
@@ -373,12 +419,15 @@ class USDModelFactory(ModelFactory):
         return StdJoint(usd_joint, self.math)
 
     def _build_joints(self) -> list[StdJoint]:
+        # Search the entire stage for joints rather than only under the
+        # articulation root.  Some converters (e.g. Newton urdf-usd-converter)
+        # place joints in a sibling scope (e.g. /Robot/Physics/) rather than
+        # under the articulation root (e.g. /Robot/Geometry/root_link).
+        # _build_joint_from_prim already filters by checking that body targets
+        # belong to our discovered rigid bodies, so a stage-wide scan is safe.
         joints: list[StdJoint] = []
-        robot_path = self.robot_prim.GetPath()
 
         for prim in self.stage.TraverseAll():
-            if not prim.GetPath().HasPrefix(robot_path):
-                continue
             if not prim.IsA(self.UsdPhysics.Joint):
                 continue
             built = self._build_joint_from_prim(prim)
