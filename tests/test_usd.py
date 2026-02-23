@@ -1,32 +1,26 @@
 import numpy as np
 import pytest
 from conftest import RobotCfg, State
-
-from adam.model import Model, build_model_factory
+import urdf_usd_converter
 from adam.numpy import KinDynComputations
-from adam.numpy.numpy_like import SpatialMath
 
 
 @pytest.fixture(scope="module")
 def setup_test(tests_setup, tmp_path_factory) -> KinDynComputations | RobotCfg | State:
     robot_cfg, state = tests_setup
 
-    out_dir = tmp_path_factory.mktemp("usd_from_urdf")
-    usd_path = out_dir / f"{robot_cfg.robot_name}.usda"
+    out_dir = tmp_path_factory.mktemp("newton_usd")
 
-    model_factory = build_model_factory(
-        description=robot_cfg.model_path,
-        math=SpatialMath(),
+    # Use the Newton urdf-usd-converter to convert URDF → USD.
+    converter = urdf_usd_converter.Converter()
+    asset = converter.convert(
+        str(robot_cfg.model_path),
+        str(out_dir / robot_cfg.robot_name),
     )
-    model = Model.build(
-        factory=model_factory,
-        joints_name_list=robot_cfg.joints_name_list,
-    )
-    model.to_usd(usd_path, robot_prim_path="/Robot")
 
+    # Let ADAM auto-discover the articulation root in the Newton-generated USD.
     adam_kin_dyn = KinDynComputations.from_usd(
-        usd_path,
-        robot_prim_path="/Robot",
+        asset.path,
         joints_name_list=robot_cfg.joints_name_list,
     )
     adam_kin_dyn.set_frame_velocity_representation(robot_cfg.velocity_representation)
