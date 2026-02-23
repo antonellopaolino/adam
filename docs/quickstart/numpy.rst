@@ -100,6 +100,25 @@ You can also load models directly from MuJoCo:
 
 See :doc:`../guides/mujoco` for detailed MuJoCo integration guide.
 
+Loading from OpenUSD
+--------------------
+
+You can also load models from OpenUSD:
+
+.. code-block:: python
+
+    import adam
+    from adam.numpy import KinDynComputations
+
+    kinDyn = KinDynComputations.from_usd(
+        "robot.usda",
+        robot_prim_path="/Robot",
+        joints_name_list=["joint_1", "joint_2"],
+    )
+    kinDyn.set_frame_velocity_representation(adam.Representations.MIXED_REPRESENTATION)
+
+See :doc:`../guides/usd` for export and conversion examples.
+
 When to Use NumPy
 -----------------
 

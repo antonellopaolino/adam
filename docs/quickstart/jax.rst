@@ -228,6 +228,31 @@ Load models from MuJoCo and leverage JAX's JIT and autodiff:
 
 See :doc:`../guides/mujoco` for more details on MuJoCo integration.
 
+Loading from OpenUSD
+--------------------
+
+Load models from OpenUSD and use them with JAX transformations:
+
+.. code-block:: python
+
+    import adam
+    import jax.numpy as jnp
+    from jax import jit
+    from adam.jax import KinDynComputations
+
+    kinDyn = KinDynComputations.from_usd(
+        "robot.usda",
+        robot_prim_path="/Robot",
+        joints_name_list=["joint_1", "joint_2"],
+    )
+    kinDyn.set_frame_velocity_representation(adam.Representations.MIXED_REPRESENTATION)
+
+    @jit
+    def compute_trace(w_H_b, joints):
+        return jnp.trace(kinDyn.mass_matrix(w_H_b, joints))
+
+See :doc:`../guides/usd` for model export and conversion details.
+
 When to Use JAX
 ---------------
 

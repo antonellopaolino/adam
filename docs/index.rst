@@ -21,6 +21,7 @@ All backends share the same API and produce numerically consistent results, lett
 **Model Loading**
   - URDF files – standard robot description format (see :doc:`quickstart/index`)
   - MuJoCo models – direct integration with ``MjModel`` objects (see :doc:`guides/mujoco`)
+  - OpenUSD files/stages – direct integration with USD articulations (see :doc:`guides/usd`)
 
 Core Features
 -------------
@@ -47,6 +48,7 @@ Core Features
   - Parametric models for shape/inertia optimization
   - Inverse kinematics (CasADi)
   - MuJoCo integration
+  - OpenUSD import/export
   - Batch processing (PyTorch and JAX)
 
 Philosophy
@@ -81,6 +83,7 @@ BSD 3-Clause License – `view license <https://choosealicense.com/licenses/bsd-
    guides/concepts
    guides/backend_selection
    guides/mujoco
+   guides/usd
    guides/troubleshooting
 
 .. toctree::

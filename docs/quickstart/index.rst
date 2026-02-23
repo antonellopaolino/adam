@@ -8,6 +8,8 @@ This section contains practical examples for each backend. Choose based on your 
 - **CasADi** – Symbolic computation, optimization formulation, automatic differentiation
 - **PyTorch** – GPU acceleration, native batching, ML integration, automatic differentiation
 
+For model interface examples (MuJoCo and OpenUSD), see :doc:`../guides/index`.
+
 .. toctree::
     :maxdepth: 2
 
@@ -15,4 +17,3 @@ This section contains practical examples for each backend. Choose based on your 
     jax
     casadi
     pytorch
-
