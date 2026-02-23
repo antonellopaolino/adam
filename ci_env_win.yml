@@ -21,3 +21,4 @@ dependencies:
   - array-api-compat
   - mujoco
   - robot_descriptions
+  - openusd
