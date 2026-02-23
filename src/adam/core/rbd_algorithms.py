@@ -1,10 +1,21 @@
 # Copyright (C) Istituto Italiano di Tecnologia (IIT). All rights reserved.
 
+from dataclasses import dataclass
+
 import numpy.typing as npt
 
 from adam.core.constants import Representations
 from adam.core.spatial_math import ArrayLike, SpatialMath
 from adam.model import Model, Node, Joint
+
+
+@dataclass(frozen=True, slots=True)
+class ChainTraversal:
+    """Homogeneous transforms accumulated along a root->frame chain."""
+
+    joints: tuple[Joint, ...]
+    root_to_joint: tuple[ArrayLike, ...]
+    root_to_target: ArrayLike
 
 
 class RBDAlgorithms:
@@ -276,17 +287,11 @@ class RBDAlgorithms:
         base_transform, joint_positions = self._convert_to_arraylike(
             base_transform, joint_positions
         )
-        chain = self.model.get_joints_chain(self.root_link, frame)
-        I_H_L = base_transform
-        for joint in chain:
-            q_ = (
-                joint_positions[..., joint.idx]
-                if joint.idx is not None
-                else self.math.zeros_like(joint_positions[..., 0])
-            )
-            H_joint = joint.homogeneous(q=q_)
-            I_H_L = I_H_L @ H_joint
-        return I_H_L
+        return self._compute_chain_homogeneous_traversal(
+            frame=frame,
+            base_transform=base_transform,
+            joint_positions=joint_positions,
+        ).root_to_target
 
     def joints_jacobian(
         self, frame: str, joint_positions: npt.ArrayLike
@@ -307,28 +312,16 @@ class RBDAlgorithms:
             joint_positions.shape[:-1] if len(joint_positions.shape) >= 2 else ()
         )
 
-        chain = self.model.get_joints_chain(self.root_link, frame)
         eye = self.math.factory.eye(batch_size + (4,))
-        B_H_j = eye
-        B_H_L = self.forward_kinematics(frame, eye, joint_positions)
-        L_H_B = self.math.homogeneous_inverse(B_H_L)
-        cols = [None] * self.NDoF
-        for joint in chain:
-            q = (
-                joint_positions[..., joint.idx]
-                if joint.idx is not None
-                else self.math.zeros_like(joint_positions[..., 0])
-            )
-            H_j = joint.homogeneous(q=q)
-            B_H_j = B_H_j @ H_j
-            L_H_j = L_H_B @ B_H_j
-            if joint.idx is not None:
-                cols[joint.idx] = self.math.adjoint(L_H_j) @ joint.motion_subspace()
-
-        zero_col = self.math.zeros(batch_size + (6, 1))
-        cols = [zero_col if col is None else col for col in cols]
-        # Use concatenate instead of stack to get (batch, 6, joints) directly
-        return self.math.concatenate(cols, axis=-1)
+        traversal = self._compute_chain_homogeneous_traversal(
+            frame=frame,
+            base_transform=eye,
+            joint_positions=joint_positions,
+        )
+        return self._joints_jacobian_from_traversal(
+            traversal=traversal,
+            joint_positions=joint_positions,
+        )
 
     def jacobian(
         self, frame: str, base_transform: npt.ArrayLike, joint_positions: npt.ArrayLike
@@ -348,9 +341,20 @@ class RBDAlgorithms:
             base_transform, joint_positions
         )
 
-        eye = self.math.factory.eye(4)
-        J = self.joints_jacobian(frame, joint_positions)
-        B_H_L = self.forward_kinematics(frame, eye, joint_positions)
+        batch_size = (
+            joint_positions.shape[:-1] if len(joint_positions.shape) >= 2 else ()
+        )
+        eye = self.math.factory.eye(batch_size + (4,))
+        traversal = self._compute_chain_homogeneous_traversal(
+            frame=frame,
+            base_transform=eye,
+            joint_positions=joint_positions,
+        )
+        J = self._joints_jacobian_from_traversal(
+            traversal=traversal,
+            joint_positions=joint_positions,
+        )
+        B_H_L = traversal.root_to_target
         L_X_B = self.math.adjoint_inverse(B_H_L)
         J_tot = self.math.concatenate([L_X_B, J], axis=-1)
         w_H_B = base_transform
@@ -420,25 +424,36 @@ class RBDAlgorithms:
             J (npt.ArrayLike): The 6 x NDoF Jacobian between the root and the `frame`
         """
         joint_positions = self._convert_to_arraylike(joint_positions)
+        batch_size = (
+            joint_positions.shape[:-1] if len(joint_positions.shape) >= 2 else ()
+        )
+        eye = self.math.factory.eye(batch_size + (4,))
+        traversal = self._compute_chain_homogeneous_traversal(
+            frame=frame,
+            base_transform=eye,
+            joint_positions=joint_positions,
+        )
+        J = self._joints_jacobian_from_traversal(
+            traversal=traversal,
+            joint_positions=joint_positions,
+        )
         if (
             self.frame_velocity_representation
             == Representations.BODY_FIXED_REPRESENTATION
         ):
-            return self.joints_jacobian(frame, joint_positions)
+            return J
         elif self.frame_velocity_representation == Representations.MIXED_REPRESENTATION:
-            eye = self.math.factory.eye(4)
-            B_H_L = self.forward_kinematics(frame, eye, joint_positions)
+            B_H_L = traversal.root_to_target
             LI_X_L = self.math.adjoint_mixed(B_H_L)
-            return LI_X_L @ self.joints_jacobian(frame, joint_positions)
+            return LI_X_L @ J
 
         elif (
             self.frame_velocity_representation
             == Representations.INERTIAL_FIXED_REPRESENTATION
         ):
-            eye = self.math.factory.eye(4)
-            B_H_L = self.forward_kinematics(frame, eye, joint_positions)
+            B_H_L = traversal.root_to_target
             I_X_L = self.math.adjoint(B_H_L)
-            return I_X_L @ self.joints_jacobian(frame, joint_positions)
+            return I_X_L @ J
 
         raise NotImplementedError(
             "Only BODY_FIXED_REPRESENTATION, MIXED_REPRESENTATION and INERTIAL_FIXED_REPRESENTATION are implemented"
@@ -475,8 +490,12 @@ class RBDAlgorithms:
         batch_size = base_transform.shape[:-2] if len(base_transform.shape) > 2 else ()
 
         I4 = self.math.factory.eye(batch_size + (4,))
-
-        B_H_L = self.forward_kinematics(frame, I4, joint_positions)
+        traversal = self._compute_chain_homogeneous_traversal(
+            frame=frame,
+            base_transform=I4,
+            joint_positions=joint_positions,
+        )
+        B_H_L = traversal.root_to_target
         L_H_B = self.math.homogeneous_inverse(B_H_L)
 
         if self.frame_velocity_representation == Representations.MIXED_REPRESENTATION:
@@ -514,19 +533,11 @@ class RBDAlgorithms:
         cols: list = [None] * self.NDoF
         cols_dot: list = [None] * self.NDoF
 
-        B_H_j = I4
-        chain = self.model.get_joints_chain(self.root_link, frame)
+        for joint, B_H_j in zip(traversal.joints, traversal.root_to_joint):
+            if joint.idx is None:
+                continue
 
-        for joint in chain:
-            if joint.idx is not None:
-                q = joint_positions[..., joint.idx]
-                q_dot = joint_velocities[..., joint.idx]
-            else:
-                q = self.math.factory.zeros(batch_size + ())
-                q_dot = self.math.factory.zeros(batch_size + ())
-
-            H_j = joint.homogeneous(q=q)
-            B_H_j = B_H_j @ H_j
+            q_dot = joint_velocities[..., joint.idx]
             L_H_j = L_H_B @ B_H_j
             S = joint.motion_subspace()
             J_j = self.math.adjoint(L_H_j) @ S
@@ -567,7 +578,7 @@ class RBDAlgorithms:
             raise NotImplementedError(
                 "Only BODY_FIXED_REPRESENTATION, MIXED_REPRESENTATION and INERTIAL_FIXED_REPRESENTATION are implemented"
             )
-        I_H_L = self.forward_kinematics(frame, base_transform, joint_positions)
+        I_H_L = base_transform @ B_H_L
         I_X_L = adj(I_H_L)
         I_v_L = self.math.mxv(I_X_L, v)
         I_X_L_dot = adj_derivative(I_H_L, I_v_L)
@@ -609,13 +620,16 @@ class RBDAlgorithms:
         )
         batch_size = base_transform.shape[:-2] if len(base_transform.shape) > 2 else ()
 
+        root_to_link = self._compute_tree_homogeneous_traversal(
+            base_transform=base_transform,
+            joint_positions=joint_positions,
+        )
         com_pos = self.math.factory.zeros(batch_size + (3,))
-        for item in self.model.tree:
-            link = item.link
-            I_H_l = self.forward_kinematics(link.name, base_transform, joint_positions)
-            H_link = link.homogeneous()
-            I_H_l = I_H_l @ H_link
-            link_pos = I_H_l[..., :3, 3:4]
+        for idx, node in enumerate(self.model.tree):
+            link = node.link
+            I_H_l = root_to_link[idx]
+            I_H_com = I_H_l @ link.homogeneous()
+            link_pos = I_H_com[..., :3, 3:4]
             com_pos += self.math.vxs(link_pos, link.inertial.mass)
         com_pos /= self._convert_to_arraylike(self.get_total_mass())
         return com_pos
@@ -1106,6 +1120,131 @@ class RBDAlgorithms:
 
         return math.concatenate([base_acc, joint_qdd], axis=-1)
 
+    def _get_joints_chain_cached(self, frame: str) -> tuple[Joint, ...]:
+        """Return the root->frame chain and cache its static joint sequence."""
+        cached_chain = self._joint_chain_cache.get(frame)
+        if cached_chain is not None:
+            return cached_chain
+
+        if frame not in self.model.links and frame not in self.model.frames:
+            raise ValueError(f"{frame} is not not in the robot model.")
+
+        chain_reversed: list[Joint] = []
+        current = frame
+        while current != self.root_link:
+            joint = self._joint_by_child.get(current)
+            if joint is None:
+                raise ValueError(
+                    f"Unable to find a chain from {self.root_link} to {frame}."
+                )
+            chain_reversed.append(joint)
+            current = joint.parent
+
+        chain = tuple(reversed(chain_reversed))
+        self._joint_chain_cache[frame] = chain
+        return chain
+
+    def _compute_chain_homogeneous_traversal(
+        self,
+        frame: str,
+        base_transform: npt.ArrayLike,
+        joint_positions: npt.ArrayLike,
+    ) -> ChainTraversal:
+        """Traverse root->frame once and cache every intermediate transform."""
+        chain = self._get_joints_chain_cached(frame)
+        if not chain:
+            return ChainTraversal(
+                joints=chain,
+                root_to_joint=(),
+                root_to_target=base_transform,
+            )
+
+        zero_q = self._default_joint_value(
+            joint_positions=joint_positions,
+            fallback=base_transform[..., 0, 0],
+        )
+        current = base_transform
+        root_to_joint: list[ArrayLike] = [None] * len(chain)
+        for idx, joint in enumerate(chain):
+            q = (
+                joint_positions[..., joint.idx]
+                if joint.idx is not None
+                else zero_q
+            )
+            current = current @ joint.homogeneous(q=q)
+            root_to_joint[idx] = current
+
+        return ChainTraversal(
+            joints=chain,
+            root_to_joint=tuple(root_to_joint),
+            root_to_target=current,
+        )
+
+    def _compute_tree_homogeneous_traversal(
+        self,
+        base_transform: npt.ArrayLike,
+        joint_positions: npt.ArrayLike,
+    ) -> tuple[ArrayLike, ...]:
+        """Traverse the full tree once and cache root->link transforms."""
+        root_to_link: list[ArrayLike] = [None] * self._node_count
+        root_to_link[self._root_index] = base_transform
+
+        zero_q = self._default_joint_value(
+            joint_positions=joint_positions,
+            fallback=base_transform[..., 0, 0],
+        )
+        for idx in self._node_indices:
+            if idx == self._root_index:
+                continue
+
+            parent_idx = self._parent_indices[idx]
+            joint = self._joints_per_node[idx]
+            if joint is None:
+                root_to_link[idx] = root_to_link[parent_idx]
+                continue
+
+            q = joint_positions[..., joint.idx] if joint.idx is not None else zero_q
+            root_to_link[idx] = root_to_link[parent_idx] @ joint.homogeneous(q=q)
+
+        return tuple(root_to_link)
+
+    def _joints_jacobian_from_traversal(
+        self,
+        traversal: ChainTraversal,
+        joint_positions: npt.ArrayLike,
+    ) -> npt.ArrayLike:
+        """Build a joint Jacobian from cached chain transforms."""
+        batch_size = (
+            joint_positions.shape[:-1] if len(joint_positions.shape) >= 2 else ()
+        )
+        if self.NDoF == 0:
+            return self.math.factory.zeros(batch_size + (6, 0))
+
+        L_H_B = self.math.homogeneous_inverse(traversal.root_to_target)
+        cols: list = [None] * self.NDoF
+        for joint, B_H_j in zip(traversal.joints, traversal.root_to_joint):
+            if joint.idx is None:
+                continue
+            L_H_j = L_H_B @ B_H_j
+            S = joint.motion_subspace()
+            cols[joint.idx] = self.math.adjoint(L_H_j) @ S
+
+        zero_col = self.math.factory.zeros(batch_size + (6, 1))
+        cols = [zero_col if col is None else col for col in cols]
+        return self.math.concatenate(cols, axis=-1)
+
+    def _default_joint_value(
+        self, joint_positions: npt.ArrayLike, fallback: npt.ArrayLike | None = None
+    ) -> npt.ArrayLike:
+        """Return a zero scalar/vector matching the joint position batch shape."""
+        if joint_positions.shape[-1] > 0:
+            return self.math.zeros_like(joint_positions[..., 0])
+        if fallback is not None:
+            return self.math.zeros_like(fallback)
+        if len(joint_positions.shape) >= 2:
+            return self.math.factory.zeros(joint_positions.shape[:-1])
+        return self.math.factory.zeros(())
+
     def _convert_to_arraylike(self, *args):
         """Convert inputs to ArrayLike if they are not already.
         Args:
@@ -1136,6 +1275,10 @@ class RBDAlgorithms:
         self._spatial_inertias: list[npt.ArrayLike] = [None] * node_count
         self._joints_per_node: list[Joint | None] = [None] * node_count
         self._joint_index_to_node: dict[int, int] = {}
+        self._joint_by_child: dict[str, Joint] = {}
+        self._joint_chain_cache: dict[str, tuple[Joint, ...]] = {
+            self.root_link: tuple()
+        }
 
         for idx, node in enumerate(nodes):
             link, joint, parent_link = node.get_elements()
@@ -1155,6 +1298,9 @@ class RBDAlgorithms:
                 self._joint_indices_per_node[idx] = joint.idx
                 if joint.idx is not None:
                     self._joint_index_to_node[int(joint.idx)] = idx
+
+        for joint in self.model.joints.values():
+            self._joint_by_child[joint.child] = joint
 
         self._root_index = self.model.tree.get_idx_from_name(self.root_link)
         self._node_count = node_count
