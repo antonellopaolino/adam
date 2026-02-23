@@ -1166,11 +1166,7 @@ class RBDAlgorithms:
         current = base_transform
         root_to_joint: list[ArrayLike] = [None] * len(chain)
         for idx, joint in enumerate(chain):
-            q = (
-                joint_positions[..., joint.idx]
-                if joint.idx is not None
-                else zero_q
-            )
+            q = joint_positions[..., joint.idx] if joint.idx is not None else zero_q
             current = current @ joint.homogeneous(q=q)
             root_to_joint[idx] = current
 
