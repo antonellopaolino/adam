@@ -10,7 +10,7 @@ Install with your preferred backend(s):
 
 .. code-block:: bash
 
-    # Single AD backend
+    # Single backend
     pip install adam-robotics[jax]        # JAX backend
     pip install adam-robotics[casadi]     # CasADi backend
     pip install adam-robotics[pytorch]    # PyTorch backend
@@ -19,7 +19,7 @@ Install with your preferred backend(s):
     pip install adam-robotics[mujoco]     # MuJoCo model loading
     pip install adam-robotics[usd]        # OpenUSD model loading/conversion
 
-    # All AD backends
+    # All backends
     pip install adam-robotics[all]        # jax + casadi + pytorch
 
 Or with conda:
