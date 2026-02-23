@@ -247,13 +247,6 @@ def urdf_to_usd(
     joints_name_list: list[str] | None = None,
     robot_prim_path: str = "/Robot",
 ) -> pathlib.Path:
-    """Convert a URDF-based model to a USD file containing one articulation robot."""
-    warnings.warn(
-        "urdf_to_usd() is deprecated; build an ADAM model and use model.to_usd() "
-        "or model_to_usd(model, ...).",
-        DeprecationWarning,
-        stacklevel=2,
-    )
 
     math = SpatialMath()
     urdf_factory = URDFModelFactory(path=urdf_path, math=math)
