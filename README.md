@@ -310,7 +310,7 @@ from adam.model import Model, build_model_factory
 from adam.numpy import KinDynComputations
 from adam.numpy.numpy_like import SpatialMath
 
-# You can convert an URDF to an USD
+# You can convert a URDF to a USD
 model_path = "robot.urdf"
 joints_name_list = ["joint_1", "joint_2"]
 
