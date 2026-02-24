@@ -35,7 +35,7 @@ jobs:
     - uses: mamba-org/setup-micromamba@v1
       if: contains(matrix.os, 'macos')
       with:
-        environment-file: ci_env.yml
+        environment-file: ci_env_macos.yml
         cache-environment-key: environment-${{ steps.week.outputs.week }}-${{ matrix.os }}
 
     - uses: mamba-org/setup-micromamba@v1
