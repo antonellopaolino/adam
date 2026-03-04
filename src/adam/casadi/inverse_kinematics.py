@@ -158,6 +158,22 @@ class InverseKinematics:
                 self.opti.bounded(lower_bounds[i], self.joint_pos[i], upper_bounds[i])
             )
 
+    def set_joint_limit(self, joint_name: str, lower_limit: float, upper_limit: float):
+        """Set custom joint limits for a specific joint for the optimization problem.
+
+        Args:
+            joint_name (str): The name of the joint to set limits for.
+            lower_limit (float): The lower limit for the joint.
+            upper_limit (float): The upper limit for the joint.
+        """
+        self._ensure_graph_modifiable()
+        if joint_name not in self.joints_list:
+            raise ValueError(f"Joint '{joint_name}' not found in joints list")
+        idx = self.joints_list.index(joint_name)
+        self.opti.subject_to(
+            self.opti.bounded(lower_limit, self.joint_pos[idx], upper_limit)
+        )
+
     def add_target_position(
         self,
         frame: str,
