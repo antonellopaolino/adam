@@ -27,9 +27,15 @@ jobs:
       run: echo "week=$(date +%Y-%U)" >> "${GITHUB_OUTPUT}"
 
     - uses: mamba-org/setup-micromamba@v1
-      if: contains(matrix.os, 'macos') || contains(matrix.os, 'ubuntu')
+      if: contains(matrix.os, 'ubuntu')
       with:
-        environment-file: ci_env.yml
+        environment-file: ci_env_linux.yml
+        cache-environment-key: environment-${{ steps.week.outputs.week }}-${{ matrix.os }}
+
+    - uses: mamba-org/setup-micromamba@v1
+      if: contains(matrix.os, 'macos')
+      with:
+        environment-file: ci_env_macos.yml
         cache-environment-key: environment-${{ steps.week.outputs.week }}-${{ matrix.os }}
 
     - uses: mamba-org/setup-micromamba@v1
@@ -51,11 +57,17 @@ jobs:
       run: |
          pip install --no-deps .
 
-    - name: Test with pytest [macOS and Linux]
+    - name: Test with pytest [Ubuntu]
       shell: bash -l {0}
-      if: contains(matrix.os, 'macos') || contains(matrix.os, 'ubuntu')
+      if: contains(matrix.os, 'ubuntu')
       run: |
           pytest
+
+    - name: Test with pytest [macOS]
+      shell: bash -l {0}
+      if: contains(matrix.os, 'macos')
+      run: |
+          pytest --ignore=tests/test_usd.py --ignore=tests/test_usd_conversion.py
 
     - name: Test with pytest [Windows]
       shell: bash -l {0}

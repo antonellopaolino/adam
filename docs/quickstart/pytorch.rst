@@ -311,6 +311,31 @@ Load models from MuJoCo and use with PyTorch's autodiff:
 
 See :doc:`../guides/mujoco` for more on MuJoCo integration.
 
+Loading from OpenUSD
+--------------------
+
+Load models from OpenUSD and use them with autograd:
+
+.. code-block:: python
+
+    import adam
+    import torch
+    from adam.pytorch import KinDynComputations
+
+    kinDyn = KinDynComputations.from_usd(
+        "robot.usda",
+        robot_prim_path="/Robot",
+        joints_name_list=["joint_1", "joint_2"],
+    )
+    kinDyn.set_frame_velocity_representation(adam.Representations.MIXED_REPRESENTATION)
+
+    w_H_b = torch.eye(4, dtype=torch.float64)
+    joints = torch.zeros(kinDyn.NDoF, dtype=torch.float64, requires_grad=True)
+    loss = kinDyn.mass_matrix(w_H_b, joints).trace()
+    loss.backward()
+
+See :doc:`../guides/usd` for model export and conversion details.
+
 When to Use PyTorch
 -------------------
 

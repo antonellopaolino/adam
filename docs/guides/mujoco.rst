@@ -3,6 +3,15 @@ MuJoCo Integration
 
 adam supports loading robot models directly from `MuJoCo <https://mujoco.org/>`_ ``MjModel`` objects. This enables seamless integration with MuJoCo simulations and models from `robot_descriptions <https://github.com/robot-descriptions/robot_descriptions.py>`_.
 
+Installation
+------------
+
+Install MuJoCo support with:
+
+.. code-block:: bash
+
+    pip install adam-robotics[mujoco]
+
 Loading MuJoCo Models
 ---------------------
 

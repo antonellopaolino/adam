@@ -38,11 +38,14 @@ dependencies = [
 jax = ["jax<=0.6.0", "jaxlib"]
 casadi = ["casadi", "liecasadi"]
 pytorch = ["torch", "jax", "jaxlib"]
+mujoco = ["mujoco"]
+usd = ["usd-core"]
 test = [
   "jax<=0.6.0",
   "jaxlib",
   "casadi",
   "torch",
+  "urdf-usd-converter",
   "mujoco",
   "robot_descriptions",
   "pytest",

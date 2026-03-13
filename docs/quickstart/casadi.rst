@@ -210,6 +210,29 @@ Load models from MuJoCo for symbolic optimization:
 
 See :doc:`../guides/mujoco` for more details on MuJoCo integration.
 
+Loading from OpenUSD
+--------------------
+
+Load models from OpenUSD for symbolic workflows:
+
+.. code-block:: python
+
+    import adam
+    import casadi as cs
+    from adam.casadi import KinDynComputations
+
+    kinDyn = KinDynComputations.from_usd(
+        "robot.usda",
+        robot_prim_path="/Robot",
+        joints_name_list=["joint_1", "joint_2"],
+    )
+    kinDyn.set_frame_velocity_representation(adam.Representations.MIXED_REPRESENTATION)
+
+    M_fun = kinDyn.mass_matrix_fun()
+    M = M_fun(cs.SX.eye(4), cs.SX.sym("q", kinDyn.NDoF))
+
+See :doc:`../guides/usd` for export and conversion examples.
+
 When to Use CasADi
 ------------------
 

@@ -14,9 +14,13 @@ Install with your preferred backend(s):
     pip install adam-robotics[jax]        # JAX backend
     pip install adam-robotics[casadi]     # CasADi backend
     pip install adam-robotics[pytorch]    # PyTorch backend
-    
+
+    # Optional model interfaces
+    pip install adam-robotics[mujoco]     # MuJoCo model loading
+    pip install adam-robotics[usd]        # OpenUSD model loading/conversion
+
     # All backends
-    pip install adam-robotics[all]
+    pip install adam-robotics[all]        # jax + casadi + pytorch
 
 Or with conda:
 
@@ -25,6 +29,8 @@ Or with conda:
     conda install -c conda-forge adam-robotics-casadi
     conda install -c conda-forge adam-robotics-jax
     conda install -c conda-forge adam-robotics-pytorch
+    conda install -c conda-forge mujoco
+    conda install -c conda-forge openusd
 
 Which Backend?
 --------------
@@ -40,9 +46,9 @@ Clone the repository and install in editable mode:
 
     git clone https://github.com/ami-iit/adam.git
     cd adam
-    pip install -e .[all,test]  # Install all backends + test dependencies
+    pip install -e .[all,mujoco,usd,test]
 
-This enables development mode with all backends and testing tools.
+This enables development mode with all backends, model interfaces, and testing tools.
 
 GPU Support (JAX & PyTorch)
 ---------------------------

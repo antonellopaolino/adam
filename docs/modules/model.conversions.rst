@@ -8,3 +8,9 @@ Model conversions
    :members:
    :undoc-members:
    :show-inheritance:
+
+
+.. automodule:: adam.model.conversions.usd
+   :members:
+   :undoc-members:
+   :show-inheritance:

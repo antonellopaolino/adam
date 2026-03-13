@@ -65,11 +65,11 @@ html_title = f"adam"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "sphinx_book_theme"
+# html_theme = "sphinx_book_theme"
 # html_theme = "sphinx_rtd_theme"
+html_theme = "shibuya"
 
 # html_theme = "furo"
-# html_logo = "pirati.png"
 
 html_context = {
     "display_github": True,

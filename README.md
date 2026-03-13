@@ -30,6 +30,12 @@ pip install adam-robotics[casadi]
 # PyTorch backend
 pip install adam-robotics[pytorch]
 
+# MuJoCo support
+pip install adam-robotics[mujoco]
+
+# OpenUSD support
+pip install adam-robotics[usd]
+
 # All backends
 pip install adam-robotics[all]
 ```
@@ -46,6 +52,9 @@ conda create -n adamenv -c conda-forge adam-robotics-jax
 # PyTorch backend (Linux/macOS only)
 conda create -n adamenv -c conda-forge adam-robotics-pytorch
 
+# OpenUSD support
+conda install -n adamenv -c conda-forge openusd
+
 # All backends (Linux/macOS only)
 conda create -n adamenv -c conda-forge adam-robotics-all
 ```
@@ -55,7 +64,7 @@ conda create -n adamenv -c conda-forge adam-robotics-all
 ```bash
 git clone https://github.com/ami-iit/adam.git
 cd adam
-pip install .[jax]  # or [casadi], [pytorch], [all]
+pip install .[jax]  # or [casadi], [pytorch], [mujoco], [usd], [all]
 ```
 
 ## 🚀 Quick Start
@@ -289,6 +298,43 @@ J = kinDyn.jacobian('frame_name', w_H_b, joints)
 
 > [!WARNING]
 > MuJoCo uses a different velocity representation for the floating base. The free joint velocity in MuJoCo is `[I \dot{p}_B, B \omega_B]`, while mixed representation uses `[I \dot{p}_B, I \omega_B]`. Make sure to handle this transformation when comparing with MuJoCo computations.
+
+### OpenUSD
+
+adam supports both exporting a model to OpenUSD and loading it back for computations.
+
+```python
+import numpy as np
+from adam import Representations
+from adam.model import Model, build_model_factory
+from adam.numpy import KinDynComputations
+from adam.numpy.numpy_like import SpatialMath
+
+# You can convert a URDF to a USD
+model_path = "robot.urdf"
+joints_name_list = ["joint_1", "joint_2"]
+
+factory = build_model_factory(description=model_path, math=SpatialMath())
+model = Model.build(factory=factory, joints_name_list=joints_name_list)
+
+# Export robot articulation to USD (use .usda for text, .usdc for binary)
+usd_path = "robot.usda"
+model.to_usd(usd_path, robot_prim_path="/Robot")
+
+# If you have an existing USD file, start from this to create a KinDynComputations instance
+kinDyn = KinDynComputations.from_usd(
+    usd_path,
+    robot_prim_path="/Robot",
+    joints_name_list=joints_name_list,
+)
+kinDyn.set_frame_velocity_representation(Representations.MIXED_REPRESENTATION)
+
+# Compute quantities as usual
+w_H_b = np.eye(4)
+q = np.zeros(len(joints_name_list))
+M = kinDyn.mass_matrix(w_H_b, q)
+com = kinDyn.CoM_position(w_H_b, q)
+```
 
 ### Inverse Kinematics
 
