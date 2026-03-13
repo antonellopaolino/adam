@@ -112,7 +112,7 @@ def model_to_usd_stage(
         mass_api.CreateMassAttr(_to_float(link.inertial.mass))
 
         inertia = link.inertial.inertia
-        I = np.array(
+        I_inertial = np.array(
             [
                 [
                     _to_float(inertia.ixx),
@@ -132,7 +132,14 @@ def model_to_usd_stage(
             ],
             dtype=float,
         )
-        principal_vals, principal_quat = _inertia_to_principal_axes(I)
+        # ADAM stores the rotational inertia in the inertial frame described by
+        # link.inertial.origin, while USD principalAxes is defined from the link
+        # frame. Rotate the tensor into the link frame before diagonalizing it.
+        inertial_rpy = _to_numpy(link.inertial.origin.rpy).reshape(-1)
+        R_link_from_inertial = R.from_euler("xyz", inertial_rpy).as_matrix()
+        I_link = R_link_from_inertial @ I_inertial @ R_link_from_inertial.T
+
+        principal_vals, principal_quat = _inertia_to_principal_axes(I_link)
 
         com_xyz = _to_numpy(link.inertial.origin.xyz).reshape(-1)
         mass_api.CreateCenterOfMassAttr(
