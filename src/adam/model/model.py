@@ -60,7 +60,8 @@ class Model:
                 )
 
         # set idx to the actuated joints
-        for [idx, joint_str] in enumerate(joints_name_list):
+        current_pos_idx = 0
+        for joint_str in joints_name_list:
             for joint in joints_list:
                 if joint.name != joint_str:
                     continue
@@ -69,18 +70,12 @@ class Model:
                     dofs = 1
                 if joint.type == "fixed" or dofs == 0:
                     joint.idx = None
-                    joint.vel_idx = None
                     dofs = 0
                 elif dofs == 1:
                     joint.idx = current_pos_idx
-                    joint.vel_idx = current_vel_idx
                 else:
                     joint.idx = tuple(range(current_pos_idx, current_pos_idx + dofs))
-                    joint.vel_idx = tuple(
-                        range(current_vel_idx, current_vel_idx + dofs)
-                    )
                 current_pos_idx += dofs
-                current_vel_idx += dofs
                 break
 
         tree = Tree.build_tree(links=links_list, joints=joints_list)
