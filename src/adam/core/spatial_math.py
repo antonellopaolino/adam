@@ -732,15 +732,17 @@ class SpatialMath:
     def vxs(self, v: npt.ArrayLike, s: npt.ArrayLike) -> npt.ArrayLike:
         """
         Args:
-            v (npt.ArrayLike): Vector
-            s (npt.ArrayLike): Scalar
+            v (npt.ArrayLike): Vector or matrix (motion subspace)
+            s (npt.ArrayLike): Scalar or vector (joint value / velocity)
         Returns:
-            npt.ArrayLike: Result of vector cross product with scalar multiplication
+            npt.ArrayLike: v * s for 1-DOF, v @ s for multi-DOF
         """
         if v.shape[-1] == 1:
             v = v[..., 0]
-        s = s[..., None]  # Add extra dimension
-        return v * s
+            s = s[..., None]  # Add extra dimension
+            return v * s
+        # Multi-DOF: matrix-vector product
+        return self.mxv(v, s)
 
     def adjoint_inverse(self, H: npt.ArrayLike) -> npt.ArrayLike:
         """
