@@ -412,12 +412,18 @@ class SpatialMath:
         Returns:
             npt.ArrayLike: Homogeneous transform
         """
+        # CasADi matrices are always 2-D.  A 3-element slice of a column
+        # vector arrives as (3, 1); transpose it to (1, 3) so that
+        # q[..., i] correctly selects each angle.
+        if q.ndim == 2 and q.shape[0] != 1 and q.shape[1] == 1:
+            q = q.T
+
         if q.shape[-1] != 3:
             raise ValueError(
                 f"Spherical joints expect rotation [roll, pitch, yaw] (3 values), received shape {q.shape}"
             )
 
-        if q.ndim > 1:
+        if q.ndim > 1 and q.shape[0] != 1:
             batch_shape = q.shape[:-1]
             xp = self._xp(q.array)
             if xyz.ndim == 1:

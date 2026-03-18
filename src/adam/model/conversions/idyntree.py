@@ -468,13 +468,24 @@ def _extract_joint_proxy(
     axis = None
     limit = None
     if joint_type in ("revolute", "prismatic"):
-        try:
-            idyn_axis = idyn_joint.getAxis(child_idx)
+        # SWIG returns the base IJoint wrapper which lacks getAxis().
+        # Downcast to the concrete type to access it.
+        concrete = None
+        if joint_type == "revolute":
+            concrete = idyn_joint.asRevoluteJoint()
+        elif joint_type == "prismatic":
+            concrete = idyn_joint.asPrismaticJoint()
+
+        if concrete is not None:
+            idyn_axis = concrete.getAxis(child_idx)
             direction = idyn_axis.getDirection()
             axis = [direction.getVal(0), direction.getVal(1), direction.getVal(2)]
-        except AttributeError:
-            # IJoint wrapper may not expose getAxis(); default to Z-axis
-            axis = [0.0, 0.0, 1.0]
+        else:
+            # Last resort: extract from the 6-D motion subspace vector
+            msv = idyn_joint.getMotionSubspaceVector(0, child_idx, parent_idx)
+            msv_np = msv.toNumPy().flatten()
+            axis = [float(msv_np[3]), float(msv_np[4]), float(msv_np[5])]
+
         if idyn_joint.hasPosLimits():
             lower = idyn_joint.getMinPosLimit(0)
             upper = idyn_joint.getMaxPosLimit(0)
